@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Campus — College events, connected</title>
+        <link rel="stylesheet" href="/style.css" />
+        <script src="/app.js" defer></script>
+    </head>
+    <body>
+        <aside class="sidebar">
+            <a class="brand" href="#events">
+                <span class="brand-icon">C</span>
+                campus
+                <span class="brand-dot">.</span>
+            </a>
+            <div class="nav-label">YOUR CAMPUS, CONNECTED</div>
+            <nav id="nav" aria-label="Main navigation"></nav>
+            <div class="sidebar-bottom">
+                <span class="live-dot"></span>
+                A little more campus life.
+                <small>College Event Management System</small>
+            </div>
+        </aside>
+        <div class="workspace">
+            <header class="topbar">
+                <span id="breadcrumb">Discover / Events</span>
+                <div id="account"></div>
+            </header>
+            <main id="app" tabindex="-1"><div class="empty">Loading your campus…</div></main>
+            <footer>Campus Events · Built for students, organized for everyone.</footer>
+        </div>
+        <div id="toast" role="status" aria-live="polite"></div>
+        <dialog id="modal"><div id="modal-content"></div></dialog>
+    </body>
+</html>

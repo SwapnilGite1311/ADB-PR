@@ -1,0 +1,54 @@
+{
+    "name": "college-event-system",
+    "version": "1.0.0",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node --watch server.js",
+        "lint": "eslint .",
+        "typecheck": "tsc --noEmit --allowJs --checkJs --skipLibCheck --esModuleInterop --target es2022 --module nodenext --lib es2022,dom,dom.iterable --types node types.d.ts models.js helpers.js reports.js server.js seed.js demo.js public/app.js",
+        "test": "node --test --test-concurrency=1 test/*.test.js",
+        "seed": "node seed.js",
+        "demo": "node demo.js"
+    },
+    "dependencies": {
+        "connect-mongo": "^5.1.0",
+        "dotenv": "^16.4.5",
+        "express": "^5.1.0",
+        "express-rate-limit": "^7.5.1",
+        "express-session": "^1.18.0",
+        "marked": "^15.0.12",
+        "mongoose": "^8.19.1",
+        "multer": "^2.0.2",
+        "nodemailer": "^10.0.13",
+        "qrcode": "^1.5.4",
+        "sanitize-html": "^2.17.0",
+        "sharp": "^0.35.5",
+        "validator": "^13.15.15"
+    },
+    "devDependencies": {
+        "@eslint/js": "^9.37.0",
+        "@types/express": "^5.0.6",
+        "@types/express-session": "^1.19.0",
+        "@types/multer": "^2.3.0",
+        "@types/node": "^22.20.5",
+        "@types/nodemailer": "^7.0.12",
+        "@types/qrcode": "^1.5.6",
+        "@types/sanitize-html": "^2.16.2",
+        "@types/validator": "^13.15.10",
+        "eslint": "^9.37.0",
+        "globals": "^16.4.0",
+        "mongodb-memory-server": "^10.2.3",
+        "prettier": "^3.5.3",
+        "supertest": "^7.1.4",
+        "typescript": "^5.9.3"
+    },
+    "engines": {
+        "node": ">=22"
+    },
+    "description": "A beginner-friendly MongoDB college event management application",
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "commonjs"
+}
