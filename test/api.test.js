@@ -114,6 +114,200 @@ test('signup requires email confirmation, unique email, and never exposes passwo
     await agent.post('/api/auth/logout').expect(200);
     await agent.get('/api/profile').expect(401);
 });
+test('admin creates accounts with hashed passwords, while public signup cannot create admins', async () => {
+    const c = await context();
+    const data = {
+        name: 'Created Student',
+        email: 'created@example.com',
+        phone: '+919876543210',
+        password,
+        role: 'student',
+    };
+    await request(app).post('/api/admin/users').send(data).expect(401);
+    await c.student.agent.post('/api/admin/users').send(data).expect(403);
+    await c.organizer.agent.post('/api/admin/users').send(data).expect(403);
+    const created = (await c.admin.agent.post('/api/admin/users').send(data).expect(201)).body;
+    assert.equal(created.role, 'student');
+    assert.equal(created.password, undefined);
+    const saved = await User.findOne({ email: data.email }).select('+password');
+    assert.notEqual(saved.password, password);
+    assert.equal(saved.emailVerified, true);
+    await request(app).post('/api/auth/login').send(data).expect(200);
+    await c.admin.agent.post('/api/admin/users').send(data).expect(409);
+    await c.admin.agent
+        .post('/api/admin/users')
+        .send({ ...data, email: 'bad@example.com', password: 'short' })
+        .expect(400);
+    await c.admin.agent
+        .post('/api/admin/users')
+        .send({ ...data, email: 'bad@example.com', role: 'other' })
+        .expect(400);
+    await c.admin.agent
+        .post('/api/admin/users')
+        .send({ ...data, email: 'neworg@example.com', role: 'organizer' })
+        .expect(400);
+    const organizer = (
+        await c.admin.agent
+            .post('/api/admin/users')
+            .send({
+                ...data,
+                email: 'neworg@example.com',
+                role: 'organizer',
+                organizationRegistrationNumber: 'CLUB/002',
+            })
+            .expect(201)
+    ).body;
+    const agent = request.agent(app);
+    await agent.post('/api/auth/login').send({ email: 'neworg@example.com', password }).expect(200);
+    await agent.post('/api/events').send(c.body).expect(403);
+    await c.admin.agent
+        .put('/api/admin/users/' + organizer.id)
+        .send({ verified: true })
+        .expect(200);
+    await agent
+        .post('/api/events')
+        .send({
+            ...c.body,
+            start: new Date(+new Date(c.body.start) + 86400000),
+            end: new Date(+new Date(c.body.end) + 86400000),
+        })
+        .expect(201);
+    const admin = (
+        await c.admin.agent
+            .post('/api/admin/users')
+            .send({ ...data, email: 'secondadmin@example.com', role: 'admin' })
+            .expect(201)
+    ).body;
+    assert.equal(admin.role, 'admin');
+});
+
+test('admin edits user details and resets a password without returning its hash', async () => {
+    const c = await context();
+    const changed = (
+        await c.admin.agent
+            .put('/api/admin/users/' + c.other.user._id)
+            .send({
+                name: 'Updated Student',
+                email: 'updated@example.com',
+                password: 'UpdatedPassword123!',
+            })
+            .expect(200)
+    ).body;
+    assert.equal(changed._id, String(c.other.user._id));
+    assert.equal(changed.name, 'Updated Student');
+    assert.equal(changed.password, undefined);
+    await request(app).post('/api/auth/login').send({ email: changed.email, password }).expect(401);
+    await request(app)
+        .post('/api/auth/login')
+        .send({ email: changed.email, password: 'UpdatedPassword123!' })
+        .expect(200);
+    await c.student.agent
+        .put('/api/admin/users/' + c.other.user._id)
+        .send({ password })
+        .expect(403);
+    await c.admin.agent
+        .put('/api/admin/users/' + c.admin.user._id)
+        .send({ active: false })
+        .expect(400);
+});
+
+test('admin creates events for verified organizers; organizer cannot impersonate another owner', async () => {
+    const c = await context();
+    const body = {
+        ...c.body,
+        title: 'Admin-created workshop',
+        organizer: String(c.organizer.user._id),
+        start: new Date(+new Date(c.body.start) + 86400000),
+        end: new Date(+new Date(c.body.end) + 86400000),
+    };
+    const event = (await c.admin.agent.post('/api/events').send(body).expect(201)).body;
+    assert.equal(event.organizer, String(c.organizer.user._id));
+    assert.equal(event.status, 'pending');
+    await c.organizer.agent
+        .put('/api/events/' + event._id)
+        .send({ title: 'Owner manages admin-created event' })
+        .expect(200);
+    await c.admin.agent
+        .put('/api/events/' + event._id + '/review')
+        .send({ status: 'approved' })
+        .expect(200);
+    await c.admin.agent
+        .post('/api/events')
+        .send({ ...body, organizer: c.student.user._id })
+        .expect(403);
+    await c.admin.agent
+        .post('/api/events')
+        .send({ ...body, organizer: undefined })
+        .expect(403);
+    const outsider = await account('organizer', 'separateowner');
+    const own = (
+        await outsider.agent
+            .post('/api/events')
+            .send({
+                ...body,
+                start: new Date(+new Date(body.start) + 86400000),
+                end: new Date(+new Date(body.end) + 86400000),
+            })
+            .expect(201)
+    ).body;
+    assert.equal(own.organizer, String(outsider.user._id));
+    await outsider.agent
+        .put('/api/events/' + event._id)
+        .send({ title: 'Unauthorized edit' })
+        .expect(403);
+    await outsider.agent.delete('/api/events/' + event._id).expect(403);
+    await c.admin.agent.delete('/api/events/' + own._id).expect(200);
+});
+
+test('fixed demo logins recover from Compass edits and retain new accounts and IDs', async () => {
+    await seedDemo();
+    const extra = await account('student', 'persistentstudent');
+    const originals = await User.find({ email: /@campus.example$/ }).lean();
+    await User.updateMany(
+        { email: /@campus.example$/ },
+        {
+            password: 'plain-text-compass-edit',
+            active: false,
+            verified: false,
+            emailVerified: false,
+            role: 'student',
+        },
+    );
+    await seedDemo({ restoreLogins: true });
+    for (const original of originals) {
+        const agent = request.agent(app);
+        const login = (
+            await agent.post('/api/auth/login').send({ email: original.email, password: 'CampusDemo123!' }).expect(200)
+        ).body;
+        assert.equal(login.role, original.role);
+        assert.equal(login.id, String(original._id));
+        await agent.get('/api/auth/me').expect(200);
+        await agent.post('/api/auth/logout').expect(200);
+    }
+    await request(app).post('/api/auth/login').send({ email: extra.user.email, password }).expect(200);
+    assert.equal(await User.countDocuments(), 4);
+    assert.equal(await Event.countDocuments(), 7);
+    assert.equal(await Registration.countDocuments(), 1);
+    assert.equal(await Feedback.countDocuments(), 1);
+});
+
+test('demo login hints are not exposed in normal or production mode', async () => {
+    const oldMode = process.env.DEMO_MODE;
+    const oldNodeEnv = process.env.NODE_ENV;
+    try {
+        delete process.env.DEMO_MODE;
+        assert.deepEqual((await request(app).get('/api/config').expect(200)).body.demoUsers, []);
+        process.env.DEMO_MODE = 'true';
+        assert.equal((await request(app).get('/api/config').expect(200)).body.demoUsers.length, 3);
+        process.env.NODE_ENV = 'production';
+        assert.equal((await request(app).get('/api/config').expect(200)).body.demoPassword, '');
+    } finally {
+        if (oldMode === undefined) delete process.env.DEMO_MODE;
+        else process.env.DEMO_MODE = oldMode;
+        process.env.NODE_ENV = oldNodeEnv;
+    }
+});
+
 test('role checks, organization verification, and foreign ownership protect mutations', async () => {
     const c = await context();
     await request(app).post('/api/venues').send({}).expect(401);
@@ -435,7 +629,7 @@ test('security headers and cross-origin mutation policy are present', async () =
 test('demo seed is repeatable without duplicate accounts, events, registrations or reviews', async () => {
     await seedDemo();
     await seedDemo();
-    assert.equal(await User.countDocuments(), 2);
+    assert.equal(await User.countDocuments(), 3);
     assert.equal(await Event.countDocuments(), 7);
     assert.equal(await Registration.countDocuments(), 1);
     assert.equal(await Feedback.countDocuments(), 1);

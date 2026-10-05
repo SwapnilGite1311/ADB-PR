@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
+const { demoPassword, demoUsers } = require('./demo-users');
 
 const hide = (text) => String(text).replace(/mongodb(?:\+srv)?:\/\/[^\s]+/g, '[database URI]');
 const message = (error) => (error instanceof Error ? error.stack || error.message : String(error));
@@ -43,18 +44,21 @@ async function demo() {
     }
     process.env.MONGO_URI = database.getUri('college_events_demo');
     process.env.SESSION_SECRET = crypto.randomBytes(32).toString('hex');
-    process.env.ADMIN_EMAIL = 'admin@campus.example';
-    process.env.ADMIN_PASSWORD = 'CampusDemo123!';
+    process.env.ADMIN_EMAIL = demoUsers[0].email;
+    process.env.ADMIN_PASSWORD = demoPassword;
+    process.env.DEMO_MODE = 'true';
     process.env.NODE_ENV = 'development';
     process.env.SMTP_HOST = '';
-    process.env.BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+    process.env.BASE_URL = 'http://localhost:' + (process.env.PORT || 3000);
     const { startServer } = require('./server');
     const { seedDemo } = require('./seed');
     const server = await startServer();
-    await seedDemo();
+    await seedDemo({ restoreLogins: true });
     const address = server.address();
     const url = `http://localhost:${typeof address === 'object' ? address.port : address}`;
     log('Local demo ready. Open ' + url + ' in your browser.');
+    log('Demo password for admin, organizer and student: ' + demoPassword);
+    log('The three demo logins are restored on startup; other users and your records are kept.');
     log('Keep this terminal open. Press Ctrl+C to stop; there is no automatic shutdown timer.');
     const started = Date.now();
     const minutesUp = () => Math.round((Date.now() - started) / 60000);

@@ -3,26 +3,18 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 const { User, Venue, Event, Registration, Feedback } = require('./models');
 const { hashPassword } = require('./helpers');
+const { demoPassword, demoUsers } = require('./demo-users');
 
-async function seedDemo() {
-    const accounts = [
-        {
-            name: 'Alex Morgan',
-            email: 'organizer@campus.example',
-            role: 'organizer',
-            organizationRegistrationNumber: 'COLLEGE-CLUB-001',
-        },
-        { name: 'Sam Taylor', email: 'student@campus.example', role: 'student' },
-    ];
+async function seedDemo({ restoreLogins = false } = {}) {
     const users = [];
-    for (const account of accounts) {
+    for (const account of demoUsers) {
         users.push(
             await User.findOneAndUpdate(
                 { email: account.email },
                 {
                     $setOnInsert: {
                         ...account,
-                        password: hashPassword('CampusDemo123!'),
+                        password: hashPassword(demoPassword),
                         phone: '+919876543210',
                         interests: ['Workshop', 'Cultural'],
                         verified: true,
@@ -32,7 +24,23 @@ async function seedDemo() {
                 { upsert: true, new: true },
             ),
         );
+        if (restoreLogins)
+            await User.updateOne(
+                { email: account.email },
+                {
+                    $set: {
+                        password: hashPassword(demoPassword),
+                        role: account.role,
+                        active: true,
+                        verified: true,
+                        emailVerified: true,
+                        organizationRegistrationNumber: account.organizationRegistrationNumber || '',
+                    },
+                },
+            );
     }
+    const organizer = users.find((user) => user.email === 'organizer@campus.example');
+    const student = users.find((user) => user.email === 'student@campus.example');
     const spaces = [
         {
             name: 'Innovation Studio',
@@ -115,7 +123,7 @@ async function seedDemo() {
         const start = new Date(Date.now() + days * 86400000);
         start.setHours(14, 0, 0, 0);
         const event = await Event.findOneAndUpdate(
-            { title, organizer: users[0]._id },
+            { title, organizer: organizer._id },
             {
                 $setOnInsert: {
                     title,
@@ -125,7 +133,7 @@ async function seedDemo() {
                     end: new Date(+start + 7200000),
                     day: start.toISOString().slice(0, 10),
                     venue: venues[venueIndex]._id,
-                    organizer: users[0]._id,
+                    organizer: organizer._id,
                     capacity: venues[venueIndex].capacity,
                     budget: 2000,
                     status: 'approved',
@@ -135,9 +143,9 @@ async function seedDemo() {
         );
         if (days < 0) past = event;
     }
-    if (past && !(await Registration.exists({ user: users[1]._id, event: past._id }))) {
+    if (past && !(await Registration.exists({ user: student._id, event: past._id }))) {
         await Registration.create({
-            user: users[1]._id,
+            user: student._id,
             event: past._id,
             status: 'checked-in',
             qrCode: crypto.randomUUID(),
@@ -145,7 +153,7 @@ async function seedDemo() {
         });
         await Event.updateOne({ _id: past._id }, { $inc: { registered: 1 } });
         await Feedback.create({
-            user: users[1]._id,
+            user: student._id,
             event: past._id,
             rating: 5,
             quality: 5,
@@ -163,7 +171,7 @@ if (require.main === module) {
     if (process.env.NODE_ENV === 'production') throw new Error('Demo seed is disabled in production.');
     mongoose
         .connect(process.env.MONGO_URI)
-        .then(seedDemo)
+        .then(() => seedDemo())
         .then(() => {
             console.log('Demo data added. Existing records were not reset.');
             return mongoose.disconnect();

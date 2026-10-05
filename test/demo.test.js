@@ -38,6 +38,7 @@ async function demoHarness(platform = 'linux', startupError = null) {
         stop: async (options) => stopOptions.push(options),
     };
     const modules = {
+        './demo-users': require('../demo-users'),
         crypto: require('node:crypto'),
         fs: { mkdirSync() {}, appendFileSync: (file, line) => logged.push([file, line]) },
         path,
@@ -50,7 +51,7 @@ async function demoHarness(platform = 'linux', startupError = null) {
             },
         },
         './server': { startServer: async () => server },
-        './seed': { seedDemo: async () => {} },
+        './seed': { seedDemo: async (options) => assert.equal(options.restoreLogins, true) },
         mongoose: { disconnect: async () => disconnects++ },
     };
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'demo.js'), 'utf8'), {

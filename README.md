@@ -10,11 +10,13 @@ A complete assignment application using **plain HTML, CSS, JavaScript, Express, 
 
 ```powershell
 Set-Location "C:\Users\Swapnil Gite\LAN\Projects\ADB PR"
-npm install
+npm ci
 npm run demo
 ```
 
 4. Open **http://localhost:3000** on your own computer.
+
+**One-click alternative:** double-click `start-demo.cmd`. It checks Node.js, installs packages if missing, starts the full app, and keeps any exit message visible. Wait for **Local demo ready**, then open the browser address. There is no separate frontend command.
 
 `demo` starts a **real, local MongoDB replica set**, creates sample records, and runs the application. You do not need Atlas, a MongoDB installation, or an `.env` file for this mode. The first run downloads a MongoDB binary, so internet access is required. The local database uses port **27018**. Keep this terminal open; stop it with **Ctrl+C**.
 
@@ -24,13 +26,33 @@ For easier Windows troubleshooting, double-click `start-demo.cmd` in the project
 
 ### Public local-demo accounts
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Admin | admin@campus.example | CampusDemo123! |
+| Role      | Email                    | Password       |
+| --------- | ------------------------ | -------------- |
+| Admin     | admin@campus.example     | CampusDemo123! |
 | Organizer | organizer@campus.example | CampusDemo123! |
-| Student | student@campus.example | CampusDemo123! |
+| Student   | student@campus.example   | CampusDemo123! |
 
-These credentials are **only for the local demonstration**, not for a deployment. Demo data is saved under `.demo-data` between normal restarts; session cookies reset on restart. Re-running the seed does not duplicate records or reset your edits. Start with a fresh demo folder if the original sample dates have passed and you need a fresh presentation dataset.
+These credentials are **only for the local demonstration**, not for a deployment. Their email/password definitions live in `demo-users.js`; all passwords in MongoDB are salted hashes, not plain text. The login screen has three role buttons to fill these credentials.
+
+Each `npm run demo` startup restores **only these three accounts' passwords, roles, active state, email confirmation and organizer verification**. If a demo password was edited in Compass, stop and restart the demo. Other registered/admin-created users, IDs, events, and database records are retained. Do not enter the MongoDB hash as a login password. Demo data stays in `.demo-data`; session cookies reset on restart. Sample records are not duplicated or rescheduled. Start with a fresh demo folder if the sample dates have passed.
+
+### Admin and organizer access
+
+- **Admin → Dashboard → Create user:** create a student, organizer or another admin. Admin-created accounts are email-confirmed and can log in immediately. For organizers, enter a registration number and verify it against college records (either check the verified box or use Verify organization later).
+- **Admin → Dashboard → Edit / reset password:** edit another user's name, email, phone or password. Leave the password blank to retain it. Activate/deactivate and organization verification buttons remain available. Your own account is edited under Profile; roles cannot be changed through the edit form.
+- **Admin → Dashboard → Create an event:** choose a verified organizer responsible for it. Save the event, then use Approve. Admin can edit/cancel/archive any event, manage venues/attendees, respond to or remove feedback, update suggestions and export reports.
+- **Organizer → Dashboard → Create an event:** create and manage only your own events. New events and edits need admin approval.
+- **New users → Create an account:** students/organizers are saved to MongoDB immediately. Open the displayed development confirmation link before logging in. New organizers need admin verification.
+
+### Show the database in MongoDB Compass
+
+Keep the app running and connect Compass with:
+
+```text
+mongodb://127.0.0.1:27018/college_events_demo?replicaSet=campusDemo
+```
+
+Open **college_events_demo**, perform actions through the website, and refresh the collection in Compass. See `PRESENTATION.md` for a short demonstration. Compass is a viewer, not a replacement for the MongoDB server; the demo starts that real server for you.
 
 ## Use your own MongoDB database
 
@@ -115,11 +137,11 @@ Tests use a separate disposable **real MongoDB replica set**, not your configure
 
 ## Useful commands
 
-| Command | Purpose |
-| --- | --- |
-| `npm run demo` | Local sample app without credentials |
-| `npm start` | Run with your `.env` database |
-| `npm run dev` | Restart automatically when backend JavaScript changes |
+| Command        | Purpose                                                                                                |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| `npm run demo` | Local sample app without credentials                                                                   |
+| `npm start`    | Run with your `.env` database                                                                          |
+| `npm run dev`  | Restart automatically when backend JavaScript changes                                                  |
 | `npm run seed` | Add public demo accounts/events to the development database in `.env` (do not use with real user data) |
 
 ## Important choices and limits
