@@ -6,3 +6,4 @@ coverage/
 .DS_Store
 .demo-data/
 .mongo-data/
+demo-log.txt

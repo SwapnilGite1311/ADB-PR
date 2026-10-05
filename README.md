@@ -20,6 +20,8 @@ npm run demo
 
 Demo mode prints the browser URL and explicitly keeps the process alive while idle. There is no automatic shutdown timeout. Closing the terminal, an operating-system termination signal, or a runtime failure can still stop it. Normal shutdown prints the received signal and preserves the database. If it unexpectedly returns to the PowerShell prompt, save all terminal output and run `$LASTEXITCODE` immediately; do not delete `.demo-data` while troubleshooting.
 
+For easier Windows troubleshooting, double-click `start-demo.cmd` in the project folder instead of running `npm run demo`. It runs the same app directly and pauses after Node exits, leaving its exit code visible. The app appends version/platform information, a heartbeat every minute, and shutdown reasons to `demo-log.txt`. If it stops unexpectedly, share that file and the exit message. This launcher does not automatically restart a failed server and is not a confirmed fix for external termination. Your database stays in `.demo-data`.
+
 ### Public local-demo accounts
 
 | Role | Email | Password |
