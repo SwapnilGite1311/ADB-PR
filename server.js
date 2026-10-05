@@ -40,6 +40,7 @@ const {
     sendReminders,
 } = require('./helpers');
 const { buildReport } = require('./reports');
+const { demoPassword, demoUsers } = require('./demo-users');
 
 const uploadFolder = path.join(__dirname, 'uploads');
 const publicUser = (user) => ({
@@ -188,6 +189,8 @@ function createApp(store) {
             statuses,
             budgetThreshold: Number(process.env.BUDGET_THRESHOLD || 10000),
             demoMail: !process.env.SMTP_HOST && process.env.NODE_ENV !== 'production',
+            demoUsers: process.env.DEMO_MODE === 'true' && process.env.NODE_ENV !== 'production' ? demoUsers : [],
+            demoPassword: process.env.DEMO_MODE === 'true' && process.env.NODE_ENV !== 'production' ? demoPassword : '',
         }),
     );
     app.get('/api/health', (req, res) =>
@@ -323,10 +326,47 @@ function createApp(store) {
     app.get('/api/admin/users', requireRole('admin'), async (req, res) =>
         res.json(await User.find().sort('-createdAt')),
     );
+    app.post('/api/admin/users', requireRole('admin'), async (req, res) => {
+        const fields = accountInput(req.body);
+        const password = String(req.body.password || '');
+        const role = String(req.body.role || 'student');
+        fail(!['admin', 'organizer', 'student'].includes(role), 'Choose a valid role.');
+        fail(password.length < 8 || password.length > 128, 'Password must contain 8–128 characters.');
+        const number = String(req.body.organizationRegistrationNumber || '').trim();
+        fail(
+            role === 'organizer' && !/^[\w/-]{3,50}$/.test(number),
+            'Enter a valid organization registration number (3–50 letters, digits, / or -).',
+        );
+        const user = await User.create({
+            ...fields,
+            password: hashPassword(password),
+            role,
+            emailVerified: true,
+            verified: role !== 'organizer' || req.body.verified === true,
+            organizationRegistrationNumber: role === 'organizer' ? number : '',
+        });
+        await Activity.create({ user: user._id, action: 'signup' });
+        res.status(201).json(publicUser(user));
+    });
     app.put('/api/admin/users/:id', requireRole('admin'), async (req, res) => {
         const user = await User.findById(req.params.id);
         fail(!user, 'User not found.', 404);
         fail(String(user._id) === String(req.user._id), 'You cannot change your own admin status.');
+        if (req.body.name !== undefined || req.body.email !== undefined || req.body.phone !== undefined) {
+            const fields = accountInput({ ...user.toObject(), ...req.body });
+            fail(
+                process.env.DEMO_MODE === 'true' &&
+                    demoUsers.some((account) => account.email === user.email) &&
+                    fields.email !== user.email,
+                'Demo emails are fixed. Create another user for a new email.',
+            );
+            Object.assign(user, fields);
+        }
+        if (req.body.password) {
+            const password = String(req.body.password);
+            fail(password.length < 8 || password.length > 128, 'Password must contain 8–128 characters.');
+            user.password = hashPassword(password);
+        }
         if (req.body.verified !== undefined) {
             fail(
                 user.role !== 'organizer' || !user.organizationRegistrationNumber || !user.emailVerified,
@@ -359,7 +399,7 @@ function createApp(store) {
             'Cancel upcoming events before deactivating this organizer.',
         );
         await user.save();
-        res.json(user);
+        res.json(await User.findById(user._id));
     });
 
     app.get('/api/venues', async (req, res) => {
@@ -462,14 +502,23 @@ function createApp(store) {
         const feedback = await Feedback.find({ event: event._id }).populate('user', 'name').sort('-createdAt');
         res.json({ ...event.toObject(), descriptionHtml: sanitize(await marked.parse(event.description)), feedback });
     });
-    app.post('/api/events', requireRole('organizer'), async (req, res) => {
-        fail(!req.user.verified, 'An admin must verify your organization before you create events.', 403);
+    app.post('/api/events', requireRole('organizer', 'admin'), async (req, res) => {
+        const organizer = req.user.role === 'admin' ? await User.findById(req.body.organizer) : req.user;
+        fail(
+            !organizer ||
+                organizer.role !== 'organizer' ||
+                !organizer.active ||
+                !organizer.emailVerified ||
+                !organizer.verified,
+            'Choose an active, email-confirmed and verified organizer.',
+            403,
+        );
         /** @type {InstanceType<typeof Event>} */
         let event;
         await mongoose.connection.transaction(async (dbSession) => {
             const fields = await eventInput(req.body, undefined, dbSession);
             await Venue.updateOne({ _id: fields.venue }, { $inc: { bookingVersion: 1 } }, { session: dbSession });
-            event = (await Event.create([{ ...fields, organizer: req.user._id }], { session: dbSession }))[0];
+            event = (await Event.create([{ ...fields, organizer: organizer._id }], { session: dbSession }))[0];
         });
         res.status(201).json(event);
     });
@@ -743,7 +792,7 @@ function createApp(store) {
         await feedback.deleteOne();
         res.json({ success: true });
     });
-    app.put('/api/feedback/:id/response', requireRole('organizer'), async (req, res) => {
+    app.put('/api/feedback/:id/response', requireRole('organizer', 'admin'), async (req, res) => {
         /** @type {any} */
         const feedback = await Feedback.findById(req.params.id).populate('event');
         fail(!feedback, 'Feedback not found.', 404);

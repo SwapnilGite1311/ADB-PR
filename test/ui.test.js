@@ -56,6 +56,61 @@ test('navigation shows only role-appropriate links', () => {
     assert.equal(elements['#nav'].innerHTML.includes('href="#venues"'), false);
     assert.ok(elements['#nav'].innerHTML.includes('href="#reports"'));
 });
+test('demo role buttons fill real credentials without bypassing login', () => {
+    const { context, elements } = frontend();
+    vm.runInContext(
+        "config.demoUsers = [{ role: 'admin', email: 'admin@campus.example' }]; config.demoPassword = 'CampusDemo123!';",
+        context,
+    );
+    context.login();
+    assert.ok(elements['#app'].innerHTML.includes('fillDemoLogin'));
+    context.fillDemoLogin('admin');
+    assert.equal(elements['#email'].value, 'admin@campus.example');
+    assert.equal(elements['#password'].value, 'CampusDemo123!');
+    assert.equal(vm.runInContext('me', context), null);
+});
+test('admin user form has creation and editing handlers with password reset support', () => {
+    const { context, elements } = frontend();
+    context.userForm();
+    assert.ok(elements['#modal-content'].innerHTML.includes('saveUser(event'));
+    assert.ok(elements['#modal-content'].innerHTML.includes('name="role"'));
+    assert.ok(elements['#modal-content'].innerHTML.includes('name="organizationRegistrationNumber"'));
+    vm.runInContext(
+        "currentUsers = [{ _id: '1', name: '<script>', email: 'student@example.com', phone: '+919876543210', role: 'student' }];",
+        context,
+    );
+    context.userForm('1');
+    const html = elements['#modal-content'].innerHTML;
+    assert.ok(html.includes('&lt;script&gt;'));
+    assert.ok(html.includes('leave blank to keep current'));
+    assert.equal(html.includes('name="role"'), false);
+    assert.equal(typeof context.saveUser, 'function');
+});
+test('admin dashboard exposes user and event creation, and event form assigns an organizer', async () => {
+    const { context, elements } = frontend();
+    vm.runInContext(
+        `
+        me = { id: 'admin1', name: 'Admin', role: 'admin' };
+        api = async (url) => {
+            if (url === '/profile') return me;
+            if (url === '/admin/users') return [{ _id: 'organizer1', name: 'Organizer', email: 'org@example.com', role: 'organizer', active: true, emailVerified: true, verified: true }];
+            if (url === '/health') return { database: 'connected', uptime: 1 };
+            if (url === '/venues') return [{ _id: 'venue1', name: 'Hall', capacity: 10 }];
+            return [];
+        };
+    `,
+        context,
+    );
+    await context.dashboard();
+    assert.ok(elements['#app'].innerHTML.includes('onclick="eventForm()"'));
+    assert.ok(elements['#admin-users'].innerHTML.includes('onclick="userForm()"'));
+    await context.eventForm();
+    assert.ok(elements['#modal-content'].innerHTML.includes('name="organizer"'));
+    assert.ok(elements['#modal-content'].innerHTML.includes('value="organizer1"'));
+    vm.runInContext("me.role = 'organizer';", context);
+    await context.eventForm();
+    assert.equal(elements['#modal-content'].innerHTML.includes('name="organizer"'), false);
+});
 test('event cards render safe text, category, venue and seats', () => {
     const { context } = frontend();
     const html = context.eventCard({

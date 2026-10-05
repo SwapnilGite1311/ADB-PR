@@ -2,6 +2,7 @@ let me = null;
 let config = {};
 let currentEvents = [];
 let currentVenues = [];
+let currentUsers = [];
 let currentReport = null;
 let eventSource = 'direct';
 let toastTimer;
@@ -260,6 +261,26 @@ function login() {
                 New here?
                 <a href="#signup">Create an account</a>
             </div>
+            ${config.demoUsers?.length
+                ? /* HTML */ `
+                      <div class="notice">
+                          <b>Fixed demo logins</b>
+                          <p>Password for all three: ${esc(config.demoPassword)}</p>
+                          <div class="actions">
+                              ${config.demoUsers
+                                  .map(
+                                      (user) => /* HTML */ `
+                                          <button class="ghost small" onclick="fillDemoLogin('${esc(user.role)}')">
+                                              ${esc(user.role)}
+                                          </button>
+                                      `,
+                                  )
+                                  .join('')}
+                          </div>
+                          <p>Pick a role to fill the form, then click Log in.</p>
+                      </div>
+                  `
+                : ''}
         </section>
     `;
 }
@@ -268,6 +289,12 @@ function signIn(event) {
         me = await api('/auth/login', 'POST', data);
         location.hash = 'dashboard';
     });
+}
+function fillDemoLogin(role) {
+    const user = config.demoUsers.find((item) => item.role === role);
+    if (!user) return;
+    $('#email').value = user.email;
+    $('#password').value = config.demoPassword;
 }
 function signup() {
     $('#app').innerHTML = /* HTML */ `
@@ -495,7 +522,7 @@ async function detail(id) {
                                             : ''}
                                     </div>
                                     <div class="actions">
-                                        ${canManage && me.role === 'organizer'
+                                        ${canManage
                                             ? /* HTML */ `
                                                   <button
                                                       class="ghost small"
@@ -782,7 +809,7 @@ async function dashboard() {
             admin
                 ? 'A clear view of everything happening across campus.'
                 : 'Create experiences. Manage attendees. Make an impact.',
-            admin ? '' : '<button onclick="eventForm()">+ Create an event</button>',
+            '<button onclick="eventForm()">+ Create an event</button>',
         )}${!admin && !user.verified
             ? '<div class="notice warning">Your organization is awaiting admin verification. Event creation becomes available once approved.</div>'
             : ''}
@@ -900,10 +927,14 @@ async function dashboard() {
     `;
     if (admin) {
         const users = await api('/admin/users');
+        currentUsers = users;
         const health = await api('/health');
         $('#admin-users').innerHTML = /* HTML */ `
             <section class="panel">
-                <h2>Users & organizer verification</h2>
+                <div class="page-heading">
+                    <h2>Users & organizer verification</h2>
+                    <button onclick="userForm()">+ Create user</button>
+                </div>
                 <p class="muted">
                     Verify registration numbers against college records before approving an organization.
                 </p>
@@ -936,6 +967,16 @@ async function dashboard() {
                                             </td>
                                             <td>
                                                 <div class="actions">
+                                                    ${item._id !== me.id
+                                                        ? /* HTML */ `
+                                                              <button
+                                                                  class="ghost small"
+                                                                  onclick="userForm('${item._id}')"
+                                                              >
+                                                                  Edit / reset password
+                                                              </button>
+                                                          `
+                                                        : ''}
                                                     ${item.role === 'organizer'
                                                         ? /* HTML */ `
                                                               <button
@@ -983,11 +1024,37 @@ function eventForm(id) {
     return run(async () => {
         currentVenues = await api('/venues');
         const item = currentEvents.find((event) => event._id === id) || {};
+        const organizers =
+            me.role === 'admin' && !id
+                ? (await api('/admin/users')).filter(
+                      (user) => user.role === 'organizer' && user.active && user.emailVerified && user.verified,
+                  )
+                : [];
+        if (me.role === 'admin' && !id && !organizers.length)
+            throw new Error('Create and verify an organizer before creating an event.');
         openModal(
             id ? 'Edit & resubmit event' : 'Create a campus moment',
             /* HTML */ `
                 <form onsubmit="saveEvent(event,'${id || ''}')">
                     <div class="form-grid">
+                        ${me.role === 'admin' && !id
+                            ? /* HTML */ `
+                                  <div class="full">
+                                      <label for="organizer">Responsible organizer</label>
+                                      <select name="organizer" id="organizer" required>
+                                          ${organizers
+                                              .map(
+                                                  (user) => /* HTML */ `
+                                                      <option value="${esc(user._id)}">
+                                                          ${esc(user.name)} · ${esc(user.email)}
+                                                      </option>
+                                                  `,
+                                              )
+                                              .join('')}
+                                      </select>
+                                  </div>
+                              `
+                            : ''}
                         ${field(
                             'title',
                             'Event title',
@@ -1107,6 +1174,57 @@ function removeEvent(id, archive) {
     return run(async () => {
         if (!confirm(archive ? 'Archive this event?' : 'Cancel this event and notify attendees?')) return;
         await api(`/events/${id}?archive=${archive}`, 'DELETE');
+        await dashboard();
+    });
+}
+function userForm(id) {
+    const item = currentUsers.find((user) => user._id === id) || {};
+    openModal(
+        id ? 'Edit user / reset password' : 'Create user',
+        /* HTML */ `
+            <form onsubmit="saveUser(event,'${id || ''}')">
+                ${field('name', 'Full name', 'text', item.name || '', 'required minlength="2" maxlength="100"')}
+                ${field(
+                    'email',
+                    'Email',
+                    'email',
+                    item.email || '',
+                    config.demoUsers?.some((user) => user.email === item.email) ? 'required readonly' : 'required',
+                )}
+                ${field('phone', 'Phone', 'tel', item.phone || '', 'required pattern="[+]?[0-9]{10,15}"')}
+                ${field(
+                    'password',
+                    id ? 'New password (leave blank to keep current)' : 'Password',
+                    'password',
+                    '',
+                    (id ? '' : 'required ') + 'minlength="8" maxlength="128" autocomplete="new-password"',
+                )}
+                ${id
+                    ? `<p>Role: ${esc(item.role)}. Roles are fixed once an account is created.</p>`
+                    : select('role', 'Role', ['student', 'organizer', 'admin'], 'student') +
+                      field(
+                          'organizationRegistrationNumber',
+                          'Organization registration number (organizers only)',
+                          'text',
+                          '',
+                          'maxlength="50"',
+                      ) +
+                      '<label class="check"><input type="checkbox" name="verified" /> I have verified the organizer against college records</label>'}
+                <p class="muted">
+                    Admin-created accounts are email-confirmed and can log in immediately. Organizers also need
+                    organization verification before creating events.
+                </p>
+                <div class="actions end"><button type="submit">Save user</button></div>
+            </form>
+        `,
+    );
+}
+function saveUser(event, id) {
+    return submit(event, async (data) => {
+        if (!id) data.verified = data.verified === 'on';
+        await api('/admin/users' + (id ? '/' + id : ''), id ? 'PUT' : 'POST', data);
+        closeModal();
+        toast('User saved in MongoDB.');
         await dashboard();
     });
 }
