@@ -18,6 +18,8 @@ npm run demo
 
 `demo` starts a **real, local MongoDB replica set**, creates sample records, and runs the application. You do not need Atlas, a MongoDB installation, or an `.env` file for this mode. The first run downloads a MongoDB binary, so internet access is required. The local database uses port **27018**. Keep this terminal open; stop it with **Ctrl+C**.
 
+Demo mode prints the browser URL and explicitly keeps the process alive while idle. There is no automatic shutdown timeout. Closing the terminal, an operating-system termination signal, or a runtime failure can still stop it. Normal shutdown prints the received signal and preserves the database. If it unexpectedly returns to the PowerShell prompt, save all terminal output and run `$LASTEXITCODE` immediately; do not delete `.demo-data` while troubleshooting.
+
 ### Public local-demo accounts
 
 | Role | Email | Password |

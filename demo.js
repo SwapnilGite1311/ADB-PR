@@ -24,18 +24,37 @@ async function demo() {
     const { seedDemo } = require('./seed');
     const server = await startServer();
     await seedDemo();
-    console.log('Local demo ready. Demo accounts are documented in README.md. Press Ctrl+C to stop.');
+    const address = server.address();
+    const url = `http://localhost:${typeof address === 'object' ? address.port : address}`;
+    console.log(`Local demo ready. Open ${url} in your browser.`);
+    console.log('Keep this terminal open. Press Ctrl+C to stop; there is no automatic shutdown timer.');
+    const keepAlive = setInterval(() => server.ref(), 60000);
     let stopping = false;
-    async function stop() {
+    async function stop(reason, exitCode = 0) {
         if (stopping) return;
         stopping = true;
-        server.close();
-        await require('mongoose').disconnect();
-        await database.stop({ doCleanup: false });
-        process.exit(0);
+        clearInterval(keepAlive);
+        console.log(`Stopping local demo: ${reason}.`);
+        try {
+            if (server.listening) await new Promise((resolve) => server.close(resolve));
+            await require('mongoose').disconnect();
+            await database.stop({ doCleanup: false });
+            console.log('Local demo stopped. Your database data has been kept.');
+            process.exit(exitCode);
+        } catch (error) {
+            console.error('Demo shutdown failed:', error.message.replace(/mongodb[^\s]+/g, '[database URI]'));
+            process.exit(1);
+        }
     }
-    process.on('SIGINT', stop);
-    process.on('SIGTERM', stop);
+    process.on('SIGINT', () => stop('Ctrl+C / SIGINT received'));
+    process.on('SIGTERM', () => stop('termination signal received from the terminal or operating system'));
+    if (process.platform === 'win32') process.on('SIGBREAK', () => stop('Ctrl+Break received'));
+    server.on('close', () => {
+        if (!stopping) stop('HTTP server closed unexpectedly', 1);
+    });
+    process.on('exit', (code) => {
+        if (!stopping) console.error(`Demo exited unexpectedly with code ${code}. Please share the terminal output.`);
+    });
 }
 demo().catch((error) => {
     console.error('Demo startup failed:', error.message.replace(/mongodb[^\s]+/g, '[database URI]'));
